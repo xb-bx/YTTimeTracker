@@ -22,6 +22,11 @@ type [<AllowNullLiteral; Global>] BrowserStorage =
 [<Emit("browser.storage.local")>]
 let storage: BrowserStorage = jsNative
 
+type DownloadOpts = { url: string; filename: string; saveAs: bool }
+
+[<Emit("browser.downloads.download")>]
+let download: DownloadOpts -> Promise<int> = jsNative
+
 (* [<AbstractClass>] *)
 type WatchInfo = 
     val mutable videoId: string 
@@ -35,8 +40,16 @@ type WInfo = { videoId: string; channelId: string; watchTime: float; title: stri
 let cast<'a, 'b> (v: 'b) =
     (v :> obj) :?> 'a
 
+let objGetAll<'a, 'b> (dbstore: string): Fable.Core.JS.Promise<'b array> =
+    let dbstore = (database.transaction (dbstore, Readwrite)).objectStore dbstore 
+    let res = dbstore.getAll()
+
+    Promise.Create (fun resolve reject -> 
+        res.onsuccess <- (fun (_) -> res.result |> cast |> resolve )
+        res.onerror <- (fun (_) -> res.error |> cast |> reject)
+    )
 let objGet<'a, 'b> (dbstore: string) (key: 'a): Fable.Core.JS.Promise<'b> =
-    let dbstore = (database.transaction ("watches", Readwrite)).objectStore dbstore 
+    let dbstore = (database.transaction (dbstore, Readwrite)).objectStore dbstore 
     let res = dbstore.get key
 
     Promise.Create (fun resolve reject -> 
@@ -44,7 +57,7 @@ let objGet<'a, 'b> (dbstore: string) (key: 'a): Fable.Core.JS.Promise<'b> =
         res.onerror <- (fun (_) -> res.error |> cast |> reject)
     )
 let objPut<'a> (dbstore: string) (obj: 'a): Fable.Core.JS.Promise<'a> =
-    let dbstore = (database.transaction ("watches", Readwrite)).objectStore dbstore 
+    let dbstore = (database.transaction (dbstore, Readwrite)).objectStore dbstore 
     let res = dbstore.put obj
     Promise.Create (fun resolve reject -> 
         res.onsuccess <- (fun (_) -> res.result |> cast |> resolve )
@@ -66,15 +79,27 @@ let getVideoLang id apikey: Promise<string> =
         return a
     }
 
-
-(* getVideo *)
-
+let toCsvRow (w: WatchInfo): string = 
+    let escape (s: string) = 
+        let a = s.Replace("\"", "\"\"")
+        sprintf "\"%s\"" a
+    sprintf "%i,%s,%s,%s,%s,%f,%i\n" w.id w.channelId w.videoId (escape w.title) w.audioLang w.watchTime ((new DateTimeOffset(w.timestamp)).ToUnixTimeSeconds())
 let db = indexedDB.``open`` "yttracker"
 db.onsuccess <- (fun ev -> 
     let t = ((ev.target :> obj) :?> Temp).result
     database <- t
     runtime.onMessage.addListener (fun (m: Message) -> 
         match m with 
+        | Export ->
+            promise { 
+                let! watches = objGetAll "watches"
+                let data = watches |> Seq.filter (fun (x: WatchInfo) -> x.watchTime <> 0) |> Seq.map (toCsvRow) |> Seq.insertAt 0 "id,channelId,videoId,title,audioLang,watchTime,timestamp\n" |> Seq.toArray 
+                let blob = Browser.Blob.Blob.Create (data |> cast)
+                let url = Browser.Url.URL.createObjectURL blob
+                let! id = download {url = url; filename = "watchdata.csv"; saveAs = true}
+                Browser.Url.URL.revokeObjectURL url
+                return Saved
+            }
         | SetApiKey key -> 
             console.log key
             storage.set ({ youtubeKey = key })

@@ -9,6 +9,7 @@ type Message =
     | EndWatching of EndWatch
     | SetApiKey of string
     | GetApiKey
+    | Export
 type Response =
     | WatchId of int
     | ApiKey of string
