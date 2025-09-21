@@ -1,0 +1,6 @@
+{
+  "devDependencies": {
+    "browserify": "^17.0.1",
+    "esmify": "^2.1.1"
+  }
+}
