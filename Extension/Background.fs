@@ -27,22 +27,19 @@ type DownloadOpts = { url: string; filename: string; saveAs: bool }
 [<Emit("browser.downloads.download")>]
 let download: DownloadOpts -> Promise<int> = jsNative
 
-(* [<AbstractClass>] *)
-type WatchInfo = 
-    val mutable videoId: string 
-    val mutable channelId: string 
-    val mutable watchTime: float 
-    val mutable title: string 
-    val mutable audioLang: string 
-    val mutable timestamp: DateTime
-    val mutable id: Guid  
-type WInfo = { videoId: string; channelId: string; watchTime: float; title: string; timestamp: DateTime; audioLang: string; id: Guid }
-let cast<'a, 'b> (v: 'b) =
-    (v :> obj) :?> 'a
 
 let objGetAll<'a, 'b> (dbstore: string): Fable.Core.JS.Promise<'b array> =
     let dbstore = (database.transaction (dbstore, Readwrite)).objectStore dbstore 
     let res = dbstore.getAll()
+
+    Promise.Create (fun resolve reject -> 
+        res.onsuccess <- (fun (_) -> res.result |> cast |> resolve )
+        res.onerror <- (fun (_) -> res.error |> cast |> reject)
+    )
+let objGetCount<'a, 'b> (dbstore: string) start count: Fable.Core.JS.Promise<'b> =
+    let dbstore = (database.transaction (dbstore, Readwrite)).objectStore dbstore 
+    let range = IDBKeyRange.lowerBound(start, true)
+    let res = dbstore.getAll(range, count)
 
     Promise.Create (fun resolve reject -> 
         res.onsuccess <- (fun (_) -> res.result |> cast |> resolve )
@@ -63,7 +60,7 @@ let objPut<'a> (dbstore: string) (obj: 'a): Fable.Core.JS.Promise<'a> =
         res.onsuccess <- (fun (_) -> res.result |> cast |> resolve )
         res.onerror <- (fun (_) -> res.error |> cast |> reject)
     )
-let objAdd<'a> (dbstore: string) (obj: 'a): Fable.Core.JS.Promise<'b> =
+let objAdd<'a> (dbstore: string) (obj: 'a) : Fable.Core.JS.Promise<'b> =
     let dbstore = (database.transaction ("watches", Readwrite)).objectStore dbstore 
     let res = dbstore.add obj
     Promise.Create (fun resolve reject -> 
@@ -90,6 +87,11 @@ db.onsuccess <- (fun ev ->
     database <- t
     runtime.onMessage.addListener (fun (m: Message) -> 
         match m with 
+        | GetEntries ->
+            promise {
+                let! res = objGetAll "watches" 
+                return res |> Entries
+            }
         | Export ->
             promise { 
                 let! watches = objGetAll "watches"
@@ -120,7 +122,7 @@ db.onsuccess <- (fun ev ->
         | EndWatching endd -> 
             promise {
                 let! res = objGet<Guid, WatchInfo> "watches" endd.id
-                res.watchTime <- endd.watchTime                
+                let res = { res with watchTime = endd.watchTime }
                 let! r = objPut "watches" res
                 return Saved
             }
@@ -128,7 +130,7 @@ db.onsuccess <- (fun ev ->
 )
 db.onupgradeneeded <- (fun ev -> 
     let t = ((ev.target :> obj) :?> Temp).result
-    t.createObjectStore ("watches", ({autoIncrement = false; keyPath = "id"} :> obj) :?> IDBCreateStoreOptions)
+    let watches = t.createObjectStore ("watches", ({autoIncrement = false; keyPath = "id"} :> obj) :?> IDBCreateStoreOptions)
     database <- t
 )
 

@@ -3,6 +3,12 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net9.0</TargetFramework>
+    <NpmDependencies>
+      <NpmPackage Name="browserify" Version="gt 17.0.1 lt 18.0.0" ResolutionStrategy="Max" DevDependency="true" />
+      <NpmPackage Name="esmify" Version="gt 2.1.1 lt 3.0.0" ResolutionStrategy="Max" DevDependency="true" />
+      <NpmPackage Name="react" Version="gt 19.1.1 lt 20.0.0" ResolutionStrategy="Max" DevDependency="false" />
+      <NpmPackage Name="react-dom" Version="gt 19.1.1 lt 20.0.0" ResolutionStrategy="Max" DevDependency="false" />
+    </NpmDependencies>
   </PropertyGroup>
 
   <ItemGroup>
@@ -10,6 +16,7 @@
     <Compile Include="Background.fs" />
     <Compile Include="ContentScript.fs" />
     <Compile Include="Popup.fs" />
+    <Compile Include="Stats.fs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -19,6 +26,9 @@
     <PackageReference Include="Fable.Core" Version="4.5.0" />
     <PackageReference Include="Fable.Fetch" Version="2.7.0" />
     <PackageReference Include="Fable.Promise" Version="3.2.0" />
+    <PackageReference Include="Feliz" Version="2.9.0" />
+    <PackageReference Include="Feliz.Bulma" Version="3.0.0" />
   </ItemGroup>
+
 
 </Project>
