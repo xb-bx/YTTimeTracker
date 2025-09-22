@@ -2,7 +2,8 @@
   "manifest_version": 2,
   "name": "Youtube Watch Statistics Tracker",
   "description": "Track what videos, how long, from what channels and in what language you watch",
-  "version": "1.0",
+  "version": "1.2",
+  "license": "GPL-2.0",
   "permissions": [
     "*://*/",
     "storage",
@@ -27,5 +28,10 @@
   "browser_action": {
     "default_title": "Youtube Watch Tracker",
     "default_popup": "index.html"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{79da0211-01bd-4f8b-ba99-d65cabd555f5}"
+    }
   }
 }

@@ -35,8 +35,8 @@ type WatchInfo =
     val mutable title: string 
     val mutable audioLang: string 
     val mutable timestamp: DateTime
-    val mutable id: int  
-type WInfo = { videoId: string; channelId: string; watchTime: float; title: string; timestamp: DateTime; audioLang: string }
+    val mutable id: Guid  
+type WInfo = { videoId: string; channelId: string; watchTime: float; title: string; timestamp: DateTime; audioLang: string; id: Guid }
 let cast<'a, 'b> (v: 'b) =
     (v :> obj) :?> 'a
 
@@ -83,7 +83,7 @@ let toCsvRow (w: WatchInfo): string =
     let escape (s: string) = 
         let a = s.Replace("\"", "\"\"")
         sprintf "\"%s\"" a
-    sprintf "%i,%s,%s,%s,%s,%f,%i\n" w.id w.channelId w.videoId (escape w.title) w.audioLang w.watchTime ((new DateTimeOffset(w.timestamp)).ToUnixTimeSeconds())
+    sprintf "%s,%s,%s,%s,%s,%f,%i\n" (w.id.ToString()) w.channelId w.videoId (escape w.title) w.audioLang w.watchTime ((new DateTimeOffset(w.timestamp)).ToUnixTimeSeconds())
 let db = indexedDB.``open`` "yttracker"
 db.onsuccess <- (fun ev -> 
     let t = ((ev.target :> obj) :?> Temp).result
@@ -113,13 +113,13 @@ db.onsuccess <- (fun ev ->
             promise {
                 let! key = (storage.get "youtubeKey").catch(fun _ -> {youtubeKey = undefined })
                 let! lang = if key.youtubeKey = undefined then Promise.resolve "" else getVideoLang start.videoId key.youtubeKey
-                let! res = objAdd "watches" ({ videoId = start.videoId; channelId = start.channelId; title = start.title; watchTime = 0; timestamp = DateTime.Now; audioLang = lang })
+                let! res = objAdd "watches" ({ videoId = start.videoId; channelId = start.channelId; title = start.title; watchTime = 0; timestamp = DateTime.Now; audioLang = lang; id = (Guid.NewGuid()) })
                 printfn "LANG = %s" lang
                 return WatchId res
             }
         | EndWatching endd -> 
             promise {
-                let! res = objGet<int, WatchInfo> "watches" endd.id
+                let! res = objGet<Guid, WatchInfo> "watches" endd.id
                 res.watchTime <- endd.watchTime                
                 let! r = objPut "watches" res
                 return Saved
@@ -128,7 +128,7 @@ db.onsuccess <- (fun ev ->
 )
 db.onupgradeneeded <- (fun ev -> 
     let t = ((ev.target :> obj) :?> Temp).result
-    t.createObjectStore ("watches", ({autoIncrement = true; keyPath = "id"} :> obj) :?> IDBCreateStoreOptions)
+    t.createObjectStore ("watches", ({autoIncrement = false; keyPath = "id"} :> obj) :?> IDBCreateStoreOptions)
     database <- t
 )
 

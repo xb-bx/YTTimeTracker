@@ -2,8 +2,9 @@ module Shared
 open Fable.Core
 open Fable.Core.JS
 open Browser.Dom
+open System
 type StartWatch = { videoId: string; title: string; channelId: string }
-type EndWatch = { id: int; watchTime: float; }
+type EndWatch = { id: Guid; watchTime: float; }
 type Message = 
     | StartWatching of StartWatch
     | EndWatching of EndWatch
@@ -11,7 +12,7 @@ type Message =
     | GetApiKey
     | Export
 type Response =
-    | WatchId of int
+    | WatchId of Guid
     | ApiKey of string
     | Saved
 type OnMessageEvent = 

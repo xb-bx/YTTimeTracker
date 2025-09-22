@@ -5,9 +5,10 @@ open Browser.Dom
 open Shared
 open Browser.Types
 open System
+open JsInterop
 
 let mutable totalWatch: float = 0
-let mutable watchId = 0 
+let mutable watchId = Guid.Empty 
 let mutable timstampStart: DateTime option = None
 let mutable url = window.location.href
 
@@ -60,7 +61,7 @@ let getChannelId () =
         return id
     }
 let saveChanges() =
-    printfn "saving... %i" watchId
+    printfn "saving... %A" watchId
     runtime.sendMessage (EndWatching { id = watchId; watchTime = totalWatch})
     ()
 let startNew() =
@@ -76,6 +77,12 @@ let startNew() =
             let! vid = runtime.sendMessage (StartWatching { videoId = id; channelId = channelId; title = ((document.querySelector "a.ytp-title-link") :?> Browser.Types.HTMLElement).innerText })
             match vid with | WatchId i -> watchId <- i
             let video = (player.querySelector "video") :?> Browser.Types.HTMLElement
+            let paused = video?paused
+            let ended = video?ended
+            let readyState = video?readyState
+            if not paused && not ended && readyState > 2 then
+                timstampStart <- Some DateTime.Now
+            else ()
             printfn  "video is null %b" (video = null)
             video.onplay <- (fun _ -> startTimer())
             video.onpause <- (fun _ -> startTimer())
