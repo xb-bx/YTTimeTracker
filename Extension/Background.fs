@@ -72,7 +72,13 @@ let getVideoLang id apikey: Promise<string> =
     promise {
         let! res = fetch (sprintf "https://youtube.googleapis.com/youtube/v3/videos?part=snippet%%2CcontentDetails%%2Cstatistics&id=%s&key=%s" id apikey ) []
         let! object = res.json()
-        let a = object?items?at(0)?snippet?defaultAudioLanguage |> cast
+        let a:string = object?items?at(0)?snippet?defaultAudioLanguage |> cast
+        let i = a.IndexOf('-')
+        let a = 
+            if i <> -1 then 
+                a.Substring(0, i)
+            else 
+                a
         return a
     }
 
@@ -91,6 +97,18 @@ db.onsuccess <- (fun ev ->
             promise {
                 let! res = objGetAll "watches" 
                 return res |> Entries
+            }
+        | Import a ->
+            promise { 
+                let items = 
+                    a 
+                    |> Seq.map (fun i -> 
+                        objAdd "watches" i)
+                    |> Seq.toArray 
+                let! _ = Promise.all items
+                (* let aa = r *)
+                (*     |> Promise.all *)
+                return Saved
             }
         | Export ->
             promise { 

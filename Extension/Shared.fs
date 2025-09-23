@@ -17,6 +17,7 @@ type Message =
     | GetApiKey
     | GetEntries 
     | Export
+    | Import of WatchInfo array
 type Response =
     | WatchId of Guid
     | ApiKey of string
