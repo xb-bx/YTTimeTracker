@@ -131,33 +131,38 @@ let SettingsTab() =
                 prop.className "is-primary";
                 prop.text "Import from CSV";
                 prop.onClick (fun _ ->
-                    console.log(123);
-                    let input = document.createElement "input";   
-                    input.setAttribute("type", "file")
-                    input.onchange <- (fun ev ->
-                        let target = ev?target?files
-                        let file = emitJsExpr "" "target[0]"
-                        promise {
-                            let! text = file?text()
-                            let t: string = text
-                            let lines = text.Split('\n')
-                            let items = 
-                                lines |> Seq.tail |> Seq.filter (fun x -> String.IsNullOrWhiteSpace x |> not) |> Seq.map(fun l -> 
-                                    let ls = parseCSV l
-                                    printfn "%s %A" l ls
-                                    let [id;channelid;videoid;title;audiolang;watchtime;timestamp] = ls
-                                    let fromUnix s = 
-                                        let d = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                                        (d.AddSeconds ((Double.Parse(s)))).ToLocalTime()
-                                    {id = Guid.Parse(id); channelId = channelid; videoId = videoid; title = title; audioLang = audiolang; watchTime = Double.Parse watchtime; timestamp = fromUnix (timestamp)}
-                                ) |> Seq.toArray 
-                            printfn "%A" items
-                            return! runtime.sendMessage (Import items)
-                            
-                        }
+                    if window.location.pathname = "/options.html" then
+                        console.log(123);
+                        let input = document.createElement "input";   
+                        input.setAttribute("type", "file")
+                        input.onchange <- (fun ev ->
+                            let target = ev?target?files
+                            let file = emitJsExpr "" "target[0]"
+                            promise {
+                                let! text = file?text()
+                                let t: string = text
+                                let lines = text.Split('\n')
+                                let items = 
+                                    lines |> Seq.tail |> Seq.filter (fun x -> String.IsNullOrWhiteSpace x |> not) |> Seq.map(fun l -> 
+                                        let ls = parseCSV l
+                                        printfn "%s %A" l ls
+                                        let [id;channelid;videoid;title;audiolang;watchtime;timestamp] = ls
+                                        let fromUnix s = 
+                                            let d = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                                            (d.AddSeconds ((Double.Parse(s)))).ToLocalTime()
+                                        {id = Guid.Parse(id); channelId = channelid; videoId = videoid; title = title; audioLang = audiolang; watchTime = Double.Parse watchtime; timestamp = fromUnix (timestamp)}
+                                    ) |> Seq.toArray 
+                                printfn "%A" items
+                                return! runtime.sendMessage (Import items)
+                                
+                            }
+                            ()
+                        )
+                        input.click()
+                    else
+                        window.``open``((sprintf "%s/%s" window.location.origin "options.html"), "_blank") 
                         ()
-                    )
-                    input.click()
+                    ()
                 )
             ] |> Bulma.block;
             Bulma.button.button [
@@ -172,7 +177,7 @@ let TabLink isActive (header: string) tab setTab =
     Html.a [ prop.classes [ if isActive() then "is-active" else ""]; prop.text header; prop.onClick (fun _ -> setTab tab) ]
 [<ReactComponent>]
 let Popup() = 
-    let (activeTab, setTab) = React.useState(Today)
+    let (activeTab, setTab) = React.useState(if window.location.pathname = "/options.html" then Settings else Today)
     Bulma.panel [
         Bulma.panelTabs [
             TabLink (fun _ -> activeTab = Today) "Today" Today setTab;
