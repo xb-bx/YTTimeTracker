@@ -11,6 +11,8 @@ let mutable totalWatch: float = 0
 let mutable watchId = Guid.Empty 
 let mutable timstampStart: DateTime option = None
 let mutable url = window.location.href
+let mutable video = null
+let mutable isplaying = false
 
 let waitForSelector selector: JS.Promise<Browser.Types.Element> = 
     promise {
@@ -34,7 +36,13 @@ let waitForPlayer (): JS.Promise<Browser.Types.HTMLElement> =
             else ()
         return p
     }
+let isVideoPlaying video = 
+    let paused = video?paused
+    let ended = video?ended
+    let readyState = video?readyState
+    not paused && not ended && readyState > 2
 let startTimer () =  
+    isplaying <- isVideoPlaying video
     match timstampStart with
     | Some t -> 
         let diff = DateTime.Now - t
@@ -64,6 +72,8 @@ let saveChanges() =
     printfn "saving... %A" watchId
     runtime.sendMessage (EndWatching { id = watchId; watchTime = totalWatch})
     ()
+
+
 let startNew() =
     promise {
         printfn "starting"
@@ -76,16 +86,13 @@ let startNew() =
             printfn "id = %s & channelid = %s" id channelId
             let! vid = runtime.sendMessage (StartWatching { videoId = id; channelId = channelId; title = ((document.querySelector "a.ytp-title-link") :?> Browser.Types.HTMLElement).innerText })
             match vid with | WatchId i -> watchId <- i
-            let video = (player.querySelector "video") :?> Browser.Types.HTMLElement
-            let paused = video?paused
-            let ended = video?ended
-            let readyState = video?readyState
-            if not paused && not ended && readyState > 2 then
+            video <- (player.querySelector "video") :?> Browser.Types.HTMLElement
+            if isVideoPlaying video then
                 timstampStart <- Some DateTime.Now
             else ()
             printfn  "video is null %b" (video = null)
-            video.onplay <- (fun _ -> startTimer())
-            video.onpause <- (fun _ -> startTimer())
+            (* video.onplay <- (fun _ -> startTimer()) *)
+            (* video.onpause <- (fun _ -> startTimer()) *)
             totalWatch <- 0
         else 
             ()
@@ -101,6 +108,7 @@ let urlChanged() =
     
 
 window.setInterval((fun _ -> if url <> window.location.href then promise { urlChanged() } |> ignore else () ), 100)
+window.setInterval((fun _ -> if video <> null then (if (isVideoPlaying video) = isplaying then () else startTimer()) ), 100)
 window.onbeforeunload <- fun _ -> 
     if timstampStart.IsSome then
         startTimer()
