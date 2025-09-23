@@ -72,7 +72,9 @@ let getVideoLang id apikey: Promise<string> =
     promise {
         let! res = fetch (sprintf "https://youtube.googleapis.com/youtube/v3/videos?part=snippet%%2CcontentDetails%%2Cstatistics&id=%s&key=%s" id apikey ) []
         let! object = res.json()
-        let a:string = object?items?at(0)?snippet?defaultAudioLanguage |> cast
+        let a: string = emitJsExpr object "$0.items[0].snippet.defaultAudioLanguage"
+        let a = if a = undefined then emitJsExpr object "$0.items[0].snippet.defaultLanguage" else a
+        let a = if a = undefined then "unknown" else a
         let i = a.IndexOf('-')
         let a = 
             if i <> -1 then 
