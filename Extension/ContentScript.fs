@@ -89,10 +89,9 @@ let startNew() =
             video <- (player.querySelector "video") :?> Browser.Types.HTMLElement
             if isVideoPlaying video then
                 timstampStart <- Some DateTime.Now
+                isplaying <- true
             else ()
             printfn  "video is null %b" (video = null)
-            (* video.onplay <- (fun _ -> startTimer()) *)
-            (* video.onpause <- (fun _ -> startTimer()) *)
             totalWatch <- 0
         else 
             ()
@@ -103,6 +102,8 @@ let urlChanged() =
     else 
         ()
     saveChanges()
+    video <- null
+    isplaying <- false
     startNew()
     ()
     

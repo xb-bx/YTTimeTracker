@@ -3,6 +3,9 @@
 The extension tracks what videos you watch and for how long and from which creators.
 Also gets the audio language(you need to set Youtube Data Api Key).
 
+[Install](https://addons.mozilla.org/en-US/firefox/addon/yt-watch-statistics-tracker/)
+
+
 # Screenshot
 [screen.png](./screen.png)
 
@@ -14,6 +17,6 @@ Also gets the audio language(you need to set Youtube Data Api Key).
 
 # Build 
 ```sh
-make
+make -C ./Extension/
 ```
 
