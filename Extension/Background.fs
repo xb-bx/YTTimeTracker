@@ -12,7 +12,6 @@ type Temp = { result :IDBDatabase }
 type Opts = { autoIncrement: bool; keyPath: string }
 let mutable database: IDBDatabase = null
 
-
 type Config = { youtubeKey: string }
 
 type [<AllowNullLiteral; Global>] BrowserStorage =
@@ -20,12 +19,18 @@ type [<AllowNullLiteral; Global>] BrowserStorage =
     abstract get: key: obj -> Promise<'a>
 
 [<Emit("browser.storage.local")>]
-let storage: BrowserStorage = jsNative
+let browserstorage: BrowserStorage = jsNative
+[<Emit("chrome.storage.local")>]
+let chromestorage: BrowserStorage = jsNative
+let storage = if isChrome then chromestorage else browserstorage
 
 type DownloadOpts = { url: string; filename: string; saveAs: bool }
 
+[<Emit("chrome.downloads.download")>]
+let chromedownload: DownloadOpts -> Promise<int> = jsNative
 [<Emit("browser.downloads.download")>]
-let download: DownloadOpts -> Promise<int> = jsNative
+let browserdownload: DownloadOpts -> Promise<int> = jsNative
+let download = if isChrome then chromedownload else browserdownload 
 
 
 let objGetAll<'a, 'b> (dbstore: string): Fable.Core.JS.Promise<'b array> =
@@ -68,12 +73,13 @@ let objAdd<'a> (dbstore: string) (obj: 'a) : Fable.Core.JS.Promise<'b> =
         res.onerror <- (fun (_) -> res.error |> cast |> reject)
     )
 
-let getVideoLang id apikey: Promise<string> = 
+let getVideoLang id apikey: Promise<(string * string * string)> = 
     promise {
         let! res = fetch (sprintf "https://youtube.googleapis.com/youtube/v3/videos?part=snippet%%2CcontentDetails%%2Cstatistics&id=%s&key=%s" id apikey ) []
         let! object = res.json()
-        let a: string = emitJsExpr object "$0.items[0].snippet.defaultAudioLanguage"
-        let a = if a = undefined then emitJsExpr object "$0.items[0].snippet.defaultLanguage" else a
+        let chan: string = emitJsExpr object "$0.items[0].snippet.channelId"
+        let title: string = emitJsExpr object "$0.items[0].snippet.title"
+        let a = emitJsExpr object "$0.items[0].snippet.defaultLanguage" 
         let a = if a = undefined then "unknown" else a
         let i = a.IndexOf('-')
         let a = 
@@ -81,7 +87,7 @@ let getVideoLang id apikey: Promise<string> =
                 a.Substring(0, i)
             else 
                 a
-        return a
+        return a, chan, title
     }
 
 let toCsvRow (w: WatchInfo): string = 
@@ -90,10 +96,12 @@ let toCsvRow (w: WatchInfo): string =
         sprintf "\"%s\"" a
     sprintf "%s,%s,%s,%s,%s,%f,%i\n" (w.id.ToString()) w.channelId w.videoId (escape w.title) w.audioLang w.watchTime ((new DateTimeOffset(w.timestamp)).ToUnixTimeSeconds())
 let db = indexedDB.``open`` "yttracker"
+db.onerror <- (fun ev -> console.error(ev))
 db.onsuccess <- (fun ev -> 
     let t = ((ev.target :> obj) :?> Temp).result
     database <- t
-    runtime.onMessage.addListener (fun (m: Message) -> 
+
+    addListener (fun (m: Message) -> 
         match m with 
         | GetEntries ->
             promise {
@@ -108,42 +116,50 @@ db.onsuccess <- (fun ev ->
                         objAdd "watches" i)
                     |> Seq.toArray 
                 let! _ = Promise.all items
-                (* let aa = r *)
-                (*     |> Promise.all *)
                 return Saved
             }
         | Export ->
             promise { 
                 let! watches = objGetAll "watches"
                 let data = watches |> Seq.filter (fun (x: WatchInfo) -> x.watchTime <> 0) |> Seq.map (toCsvRow) |> Seq.insertAt 0 "id,channelId,videoId,title,audioLang,watchTime,timestamp\n" |> Seq.toArray 
-                let blob = Browser.Blob.Blob.Create (data |> cast)
-                let url = Browser.Url.URL.createObjectURL blob
-                let! id = download {url = url; filename = "watchdata.csv"; saveAs = true}
-                Browser.Url.URL.revokeObjectURL url
+                if isChrome then 
+                    let btoa: obj -> string = emitJsExpr "" "btoa"
+                    let url = sprintf "data:text/csv;base64,%s" (data |> String.concat "" |> btoa)
+                    let! id = download {url = url; filename = "watchdata.csv"; saveAs = true}
+                    ()
+                else 
+                    let blob = Browser.Blob.Blob.Create (data |> cast)
+                    let url = Browser.Url.URL.createObjectURL blob
+                    let! id = download {url = url; filename = "watchdata.csv"; saveAs = true}
+                    Browser.Url.URL.revokeObjectURL url
                 return Saved
             }
         | SetApiKey key -> 
-            console.log key
             storage.set ({ youtubeKey = key })
             Promise.resolve Saved
         | GetApiKey -> 
             promise {
                 let! config = storage.get "youtubeKey"
-                return ApiKey config.youtubeKey
+                let res = if config = undefined || config.youtubeKey = undefined || config.youtubeKey = null then "" else config.youtubeKey
+                return ApiKey res
             }
         | StartWatching start -> 
             promise {
                 let! key = (storage.get "youtubeKey").catch(fun _ -> {youtubeKey = undefined })
-                let! lang = if key.youtubeKey = undefined then Promise.resolve "" else getVideoLang start.videoId key.youtubeKey
-                let! res = objAdd "watches" ({ videoId = start.videoId; channelId = start.channelId; title = start.title; watchTime = 0; timestamp = DateTime.Now; audioLang = lang; id = (Guid.NewGuid()) })
+                let! lang, chan, title = if key.youtubeKey = undefined then Promise.resolve (("", "", "")) else getVideoLang start.videoId key.youtubeKey
+                let! res = objAdd "watches" ({ videoId = start.videoId; channelId = chan; title = title; watchTime = 0; timestamp = DateTime.Now; audioLang = lang; id = (Guid.NewGuid()) })
                 printfn "LANG = %s" lang
                 return WatchId res
             }
         | EndWatching endd -> 
             promise {
                 let! res = objGet<Guid, WatchInfo> "watches" endd.id
-                let res = { res with watchTime = endd.watchTime }
-                let! r = objPut "watches" res
+                if res <> undefined then
+                    let res = { res with watchTime = endd.watchTime }
+                    let! r = objPut "watches" res
+                    ()
+                else 
+                    ()
                 return Saved
             }
 )

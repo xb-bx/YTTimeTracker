@@ -3,6 +3,11 @@ JS_OUT=$(subst .fs,.fs.js,$(FS_SRC))
 ../extension.zip: ../extension/ContentScript.js ../extension/Popup.js  ../extension/Background.js
 	cd ../ ;\
 	zip -0 extension.zip -j extension/*
+../extension_chrome/manifest.json: ../extension.zip manifest_chrome.json
+	cd ../ ; \
+	mkdir -p extension_chrome ; \
+	cp extension/* extension_chrome/; \
+	cp Extension/manifest_chrome.json extension_chrome/manifest.json
 ./package.json.t: package.json
 	femto --resolve
 	echo "$$(date)" > ./package.json.t

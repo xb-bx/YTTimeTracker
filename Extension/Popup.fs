@@ -9,11 +9,6 @@ open JsInterop
 open Feliz.ViewEngine
 open Elmish
 open Browser.Types
-[<Emit("browser.tabs.create({url: $0})")>]
-let tabCreate taburl = jsNative
-[<Emit("browser.runtime.getURL")>]
-let getURL: string -> string = jsNative
-
 
 type Tab =
     | Today
@@ -68,11 +63,7 @@ let panel = withClass "panel" Html.div
 let panelTabs = withClass "panel-tabs" Html.div
 let panelBlock = withClass "panel-block" Html.div
 let input = withClass "input" Html.input
-let main() = 
-    block [
-        prop.classes ["another"];
-        prop.children [ Html.button [ prop.text "hello" ]]
-    ] |> Render.htmlView 
+
 type Model = { activeTab: Tab; apikey: string; items: WatchInfo array }
 type Command = 
     | Goto of Tab
@@ -81,7 +72,8 @@ type Command =
     | Import
     | SaveApi
 let init items apikey () = 
-    let tab = if window.location.pathname = "/options.html" then Settings else Today
+    let tab = if window.location.pathname = "/options.html" || String.IsNullOrWhiteSpace apikey then Settings else Today
+    
     { activeTab = tab; apikey = apikey; items = items; }, Cmd.none
 let update msg model =
     match msg with
@@ -115,6 +107,9 @@ let StatsTab model =
         | Today -> items |> Seq.filter (fun x -> DateOnly.FromDateTime(x.timestamp) = DateOnly.FromDateTime(DateTime.Today)) 
         | ThisWeek -> items |> Seq.filter (fun x -> DateOnly.FromDateTime(x.timestamp) > DateOnly.FromDateTime(( 7 |> TimeSpan.FromDays |> DateTime.Today.Subtract ))) 
         | AllTime -> items 
+    if String.IsNullOrWhiteSpace model.apikey then 
+        Html.div [ prop.text "SET YOUR API KEY" ] 
+    else 
     Html.div [ 
         prop.style [ style.width (length.percent 100) ];
         prop.children [
@@ -141,7 +136,10 @@ let SettingsTab model dispatch =
             button [
                 prop.classes ["is-primary"];
                 prop.text "Save";
-                onclick (fun _ -> runtime.sendMessage (SetApiKey model.apikey) |> ignore)
+                prop.type' "button";
+                onclick (fun _ -> 
+                    sendMessage (SetApiKey model.apikey) |> ignore
+                )
             ]
             ] |> prop.children |> (fun x -> [x]) |> block;
             button [
@@ -149,7 +147,6 @@ let SettingsTab model dispatch =
                 prop.text "Import from CSV";
                 onclick (fun _ ->
                     if window.location.pathname = "/options.html" then
-                        console.log(123);
                         let input = document.createElement "input";   
                         input.setAttribute("type", "file")
                         input.onchange <- (fun ev ->
@@ -170,7 +167,7 @@ let SettingsTab model dispatch =
                                         {id = Guid.Parse(id); channelId = channelid; videoId = videoid; title = title; audioLang = audiolang; watchTime = Double.Parse watchtime; timestamp = fromUnix (timestamp)}
                                     ) |> Seq.toArray 
                                 printfn "%A" items
-                                return! runtime.sendMessage (Message.Import items)
+                                return! sendMessage (Message.Import items)
                             }
                             ()
                         )
@@ -184,11 +181,12 @@ let SettingsTab model dispatch =
             button [
                 prop.className "is-primary";
                 prop.text "Export as CSV";
-                onclick (fun _ -> runtime.sendMessage Message.Export |> ignore)
+                onclick (fun _ -> sendMessage Message.Export |> ignore)
             ] |> prop.children |> (fun x -> [x]) |> block;
         ]
     ]
 let view model dispatch =
+    count <- 0
     let tab = tab model dispatch
     let view = 
         panel [
@@ -202,27 +200,34 @@ let view model dispatch =
                     ]
                 ];
                 panelBlock [
-                    match model.activeTab with
-                    | Settings -> 
-                        SettingsTab model dispatch 
-                    | _ -> StatsTab model
-                    |> prop.children 
+                    prop.children [
+                        match model.activeTab with
+                        | Settings -> 
+                            SettingsTab model dispatch 
+                        | _ -> StatsTab model
+                    ]
                 ];
             ]
         ] |> Render.htmlView
     (document.getElementById "root").innerHTML <- view
     document.querySelectorAll("[data-click]") 
         |> Fable.Core.JS.Array.from
-        |> Seq.map(fun x -> x :> HTMLElement) |> Seq.iter (fun x -> x.onclick <- (fun ev -> globalhandler (x.dataset["click"] |> Int32.Parse) ev ))
+        |> Seq.map(fun x -> x :> HTMLElement) |> Seq.iter (fun x -> x.onmouseup <- (fun ev -> globalhandler (x.dataset["click"] |> Int32.Parse) ev ))
     document.querySelectorAll("[data-textchange]") 
         |> Fable.Core.JS.Array.from
         |> Seq.map(fun x -> x :> HTMLElement) |> Seq.iter (fun x -> x.onchange <- (fun ev -> globalhandler (x.dataset["textchange"] |> Int32.Parse) ev?target?value ))
 
 promise { 
-    let! items = runtime.sendMessage GetEntries 
-    let! apikey = runtime.sendMessage GetApiKey
+    let a = GetApiKey
+    let b = emitJsExpr a "structuredClone($0)"
+    let! items = sendMessage GetEntries 
+    let! apikey = sendMessage GetApiKey
     match (items, apikey) with
     | (Entries items, ApiKey apikey) -> 
+        if isChrome then // FUCK CHROME
+            items |> Seq.iter (fun x -> emitJsStatement x "$0.timestamp = new Date($0.timestamp)")
+        else 
+            ()
         Program.mkProgram (init items apikey) update view
             |> Program.run
 }

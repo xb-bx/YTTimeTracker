@@ -56,21 +56,9 @@ let getVideoId () =
     let params: URLSearchParams = Browser.Url.URLSearchParams.Create window.location.search 
     let id = params.get "v"
     id
-let getChannelId () =
-    promise {
-        let! link = waitForSelector ".ytd-channel-name a"
-        let href = link.getAttribute "href" 
-        let handle = href.Substring (href.LastIndexOf "@")
-        let! resp = fetch (sprintf "https://youtube.com/%s" handle) []
-        let! text = resp.text()
-        let search = "\"channelUrl\":\"https://www.youtube.com/channel/"
-        let rest = text.Substring( (text.IndexOf(search) + search.Length))
-        let id = rest.Substring(0, rest.IndexOf "\"")
-        return id
-    }
 let saveChanges() =
     printfn "saving... %A" watchId
-    runtime.sendMessage (EndWatching { id = watchId; watchTime = totalWatch})
+    sendMessage (EndWatching { id = watchId; watchTime = totalWatch})
     ()
 
 
@@ -81,10 +69,8 @@ let startNew() =
         let id = getVideoId()
         if id.IsSome then 
             let! player = waitForPlayer()
-            let! channelId = getChannelId()
             let id = id.Value
-            printfn "id = %s & channelid = %s" id channelId
-            let! vid = runtime.sendMessage (StartWatching { videoId = id; channelId = channelId; title = ((document.querySelector "a.ytp-title-link") :?> Browser.Types.HTMLElement).innerText })
+            let! vid = sendMessage (StartWatching { videoId = id })
             match vid with | WatchId i -> watchId <- i
             video <- (player.querySelector "video") :?> Browser.Types.HTMLElement
             if isVideoPlaying video then
@@ -109,7 +95,8 @@ let urlChanged() =
     
 
 window.setInterval((fun _ -> if url <> window.location.href then promise { urlChanged() } |> ignore else () ), 100)
-window.setInterval((fun _ -> if video <> null then (if (isVideoPlaying video) = isplaying then () else startTimer()) ), 100)
+window.setInterval((fun _ ->
+    if video <> null then (if (isVideoPlaying video) = isplaying then () else startTimer()) ), 100)
 window.onbeforeunload <- fun _ -> 
     if timstampStart.IsSome then
         startTimer()
