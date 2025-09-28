@@ -8,6 +8,9 @@ JS_OUT=$(subst .fs,.fs.js,$(FS_SRC))
 	mkdir -p extension_chrome ; \
 	cp extension/* extension_chrome/; \
 	cp Extension/manifest_chrome.json extension_chrome/manifest.json
+../extension_chrome.zip: ../extension_chrome/manifest.json
+	cd ../extension_chrome/ ;\
+	zip -0 ../extension_chrome.zip *
 ./package.json.t: package.json
 	femto --resolve
 	echo "$$(date)" > ./package.json.t

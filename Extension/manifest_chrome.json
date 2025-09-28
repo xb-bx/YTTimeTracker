@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "DEBUG Youtube Watch Statistics Tracker",
+  "name": "Youtube Watch Statistics Tracker",
   "description": "Track what videos, how long, from what channels and in what language you watch",
   "version": "1.5",
   "license": "GPL-2.0",
@@ -28,10 +28,5 @@
   "action": {
     "default_title": "Youtube Watch Tracker",
     "default_popup": "index.html"
-  },
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "DEBUG yttimetracker.nazarnik050406@gmail.com"
-    }
   }
 }
