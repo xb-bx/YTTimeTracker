@@ -103,6 +103,16 @@ window.onbeforeunload <- fun _ ->
     else 
         ()
     saveChanges()
+addListener (fun msg -> 
+    console.log "received req"
+    console.log msg
 
+    promise {
+        return 
+            match msg with 
+            | GetCurrentWatch -> WatchId watchId
+            | _ -> Saved
+    }
+)
 startNew()
 

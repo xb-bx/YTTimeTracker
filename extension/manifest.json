@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Youtube Watch Statistics Tracker",
   "description": "Track what videos, how long, from what channels and in what language you watch",
-  "version": "1.5",
+  "version": "1.6",
   "license": "GPL-2.0",
   "permissions": [
     "*://*/",

@@ -80,7 +80,17 @@ let getVideoLang id apikey: Promise<(string * string * string)> =
         let chan: string = emitJsExpr object "$0.items[0].snippet.channelId"
         let title: string = emitJsExpr object "$0.items[0].snippet.title"
         let a = emitJsExpr object "$0.items[0].snippet.defaultLanguage" 
-        let a = if a = undefined then "unknown" else a
+        let a = 
+            if a = undefined then 
+                emitJsExpr object "$0.items[0].snippet.defaultAudioLanguage"
+            else
+                a
+        let a = 
+            if a = undefined then 
+                "unknown"
+            else
+                a
+
         let i = a.IndexOf('-')
         let a = 
             if i <> -1 then 
@@ -150,6 +160,42 @@ db.onsuccess <- (fun ev ->
                 let! res = objAdd "watches" ({ videoId = start.videoId; channelId = chan; title = title; watchTime = 0; timestamp = DateTime.Now; audioLang = lang; id = (Guid.NewGuid()) })
                 printfn "LANG = %s" lang
                 return WatchId res
+            }
+        | GetCurrentLang ->
+            promise {
+                let! resp = (sendMessageToActive (GetCurrentWatch))
+                match resp with
+                | Some(WatchId id) -> 
+                    let! w = objGet<Guid, WatchInfo> "watches" id
+                    if w <> undefined then
+                        return Lang w.audioLang 
+                    else 
+                        console.error "not found"
+                        return Saved
+                | _ -> 
+                    return Saved
+            }
+        | SetLang s -> promise {
+                let! tab = getActiveTab()
+                if tab.Length = 0 then
+                    console.log "notabs"
+                    return Saved
+                else 
+                    let! resp = (sendMessageToTab tab[0].id (GetCurrentWatch)).catch(fun _ -> WatchId (Guid.Empty))
+                    match resp with
+                    | WatchId id -> 
+                        let! w = objGet<Guid, WatchInfo> "watches" id
+                        if w <> undefined then
+                            let res = { w with audioLang = s }
+                            let! _ = objPut "watches" res
+                            return Saved
+                        else 
+                            console.error "not found"
+                            return Saved
+                    | _ -> 
+                        return Saved
+
+                        
             }
         | EndWatching endd -> 
             promise {

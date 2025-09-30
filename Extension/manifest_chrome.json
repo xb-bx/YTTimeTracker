@@ -9,8 +9,8 @@
   ],
   "permissions": [
     "storage",
-    "tabs",
-    "downloads"
+    "downloads",
+    "tabs"
   ],
   "content_scripts": [
     {
