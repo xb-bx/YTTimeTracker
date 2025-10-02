@@ -133,7 +133,7 @@ db.onsuccess <- (fun ev ->
                 let! watches = objGetAll "watches"
                 let data = watches |> Seq.filter (fun (x: WatchInfo) -> x.watchTime <> 0) |> Seq.map (toCsvRow) |> Seq.insertAt 0 "id,channelId,videoId,title,audioLang,watchTime,timestamp\n" |> Seq.toArray 
                 if isChrome then 
-                    let btoa: obj -> string = emitJsExpr "" "btoa"
+                    let btoa str: string = emitJsExpr str "btoa(unescape(encodeURIComponent($0)))"
                     let url = sprintf "data:text/csv;base64,%s" (data |> String.concat "" |> btoa)
                     let! id = download {url = url; filename = "watchdata.csv"; saveAs = true}
                     ()
@@ -144,68 +144,12 @@ db.onsuccess <- (fun ev ->
                     Browser.Url.URL.revokeObjectURL url
                 return Saved
             }
-        | SetApiKey key -> 
-            storage.set ({ youtubeKey = key })
-            Promise.resolve Saved
-        | GetApiKey -> 
-            promise {
-                let! config = storage.get "youtubeKey"
-                let res = if config = undefined || config.youtubeKey = undefined || config.youtubeKey = null then "" else config.youtubeKey
-                return ApiKey res
-            }
-        | StartWatching start -> 
-            promise {
-                let! key = (storage.get "youtubeKey").catch(fun _ -> {youtubeKey = undefined })
-                let! lang, chan, title = if key.youtubeKey = undefined then Promise.resolve (("", "", "")) else getVideoLang start.videoId key.youtubeKey
-                let! res = objAdd "watches" ({ videoId = start.videoId; channelId = chan; title = title; watchTime = 0; timestamp = DateTime.Now; audioLang = lang; id = (Guid.NewGuid()) })
-                printfn "LANG = %s" lang
-                return WatchId res
-            }
-        | GetCurrentLang ->
-            promise {
-                let! resp = (sendMessageToActive (GetCurrentWatch))
-                match resp with
-                | Some(WatchId id) -> 
-                    let! w = objGet<Guid, WatchInfo> "watches" id
-                    if w <> undefined then
-                        return Lang w.audioLang 
-                    else 
-                        console.error "not found"
-                        return Saved
-                | _ -> 
-                    return Saved
-            }
-        | SetLang s -> promise {
-                let! tab = getActiveTab()
-                if tab.Length = 0 then
-                    console.log "notabs"
-                    return Saved
-                else 
-                    let! resp = (sendMessageToTab tab[0].id (GetCurrentWatch)).catch(fun _ -> WatchId (Guid.Empty))
-                    match resp with
-                    | WatchId id -> 
-                        let! w = objGet<Guid, WatchInfo> "watches" id
-                        if w <> undefined then
-                            let res = { w with audioLang = s }
-                            let! _ = objPut "watches" res
-                            return Saved
-                        else 
-                            console.error "not found"
-                            return Saved
-                    | _ -> 
-                        return Saved
-
-                        
-            }
-        | EndWatching endd -> 
-            promise {
-                let! res = objGet<Guid, WatchInfo> "watches" endd.id
-                if res <> undefined then
-                    let res = { res with watchTime = endd.watchTime }
-                    let! r = objPut "watches" res
-                    ()
-                else 
-                    ()
+        | Watched winfo ->
+            promise { 
+                if isChrome then emitJsStatement winfo "$0.timestamp = new Date($0.timestamp)"
+                console.log "saving"
+                let! o = objAdd "watches" winfo 
+                console.log $"saved {o}"
                 return Saved
             }
 )

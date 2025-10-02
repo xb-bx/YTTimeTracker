@@ -1,9 +1,13 @@
 # Youtube Watch Statistics Tracker
 
 The extension tracks what videos you watch and for how long and from which creators.
-Also gets the audio language(you need to set Youtube Data Api Key).
+Also detects the language of the video
 
-[Install](https://addons.mozilla.org/en-US/firefox/addon/yt-watch-statistics-tracker/)
+## Install
+- [Firefox](https://addons.mozilla.org/en-US/firefox/addon/yt-watch-statistics-tracker/)
+- Chrome version is waiting to be approved
+
+
 
 
 # Screenshot

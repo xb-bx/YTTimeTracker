@@ -51,46 +51,18 @@ let parseCSV s =
             p rest (acc @ [s]) 
     p s []
 
-type Model = { activeTab: Tab; apikey: string; items: WatchInfo array; lang: string }
+type Model = { activeTab: Tab; items: WatchInfo array; }
 type Command = 
     | Goto of Tab
-    | SetApi of string
-    | SetLang of string
     | Export 
     | Import
-    | SaveApi
-let init items apikey lang () = 
-    let tab = if window.location.pathname = "/options.html" || String.IsNullOrWhiteSpace apikey then Settings else Today
-    
-    { activeTab = tab; apikey = apikey; items = items; lang = lang}, Cmd.none
+let init items () = 
+    let tab = if window.location.pathname = "/options.html" then Settings else Today
+    { activeTab = tab; items = items; }, Cmd.none
 let update msg model =
-    console.log "update"
-    console.log msg 
-    console.log model
     match msg with
     | Goto t ->
         { model with activeTab = t }, Cmd.none
-    | SetLang l ->
-        sendMessage (Message.SetLang l) |> ignore
-        { model with lang = l }, Cmd.none
-    | SetApi s ->
-        printfn "change %s" s
-        { model with apikey = s }, Cmd.none
-emitJsStatement "" "var dispatchers = []"
-[<Emit("dispatchers")>]
-let dispatchers: (obj -> unit) array = jsNative
-let mutable count = 0
-(* let onclick handler =  *)
-(*     dispatchers[count] <- handler *)
-(*     count <- count + 1 *)
-(*     KeyValue("data-click", (sprintf "%i" (count-1))) *)
-(* let newclick cmd =  *)
-(*     KeyValue("data-click", cmd) *)
-(* let ontextchange (handler: (string -> unit)) = *)
-(*     dispatchers[count] <- (handler |> cast) *)
-(*     count <- count + 1 *)
-(*     KeyValue("data-textchange", (sprintf "%i" (count-1))) *)
-
     
 let dynamic<'a> (data: ResizeArray<(Model -> obj) * (HTMLElement -> obj -> HTMLElement) * obj>) model (selector: Model -> 'a) (elemcreate: Model -> HTMLElement) =
     let wrapped m (old: HTMLElement) model = 
@@ -98,7 +70,6 @@ let dynamic<'a> (data: ResizeArray<(Model -> obj) * (HTMLElement -> obj -> HTMLE
         let dynid = if old <> null then old.dataset["dynid"] else data.Count.ToString()
         res.dataset["dynid"] <- dynid
         if old <> null then
-            (* emitJsStatement "" "debugger" *)
             let result = res
             old.parentElement.replaceChild(result, old) 
             ()
@@ -111,28 +82,18 @@ let dynamic<'a> (data: ResizeArray<(Model -> obj) * (HTMLElement -> obj -> HTMLE
     res
 let tab model dispatch (name: string) target = 
     Bind.el ((model), (fun model -> Html.a [ prop.className (if model.activeTab = target then "is-active" else ""); prop.text name; Ev.onClick (fun _ -> dispatch (Goto target)) ]))
+let startofweek (d: DateTime) =
+    let diff = (7 + (int(d.DayOfWeek) - int(DayOfWeek.Monday))) % 7
+    d.AddDays(float(-1 * diff)).Date
 let StatsTab model dispatch = 
     let items = (model |> Store.get).items
     let filtered = 
         match (model |> Store.get).activeTab with
         | Today -> items |> Seq.filter (fun x -> DateOnly.FromDateTime(x.timestamp) = DateOnly.FromDateTime(DateTime.Today)) 
-        | ThisWeek -> items |> Seq.filter (fun x -> DateOnly.FromDateTime(x.timestamp) > DateOnly.FromDateTime(( 7 |> TimeSpan.FromDays |> DateTime.Today.Subtract ))) 
+        | ThisWeek -> items |> Seq.filter (fun x -> DateOnly.FromDateTime(x.timestamp) > DateOnly.FromDateTime(DateTime.Now |> startofweek)) 
         | AllTime -> items 
-    if String.IsNullOrWhiteSpace ((model |> Store.get).apikey) then 
-        Html.div [ prop.text "SET YOUR API KEY" ] 
-    else 
     Html.div [ 
         prop.style "width: 100%";
-        Bind.el ((model), (fun mmodel -> 
-            emitJsStatement "" "debugger"
-            if mmodel.lang = "unknown" then 
-                bulma.block [ 
-                    prop.text "Could not get current video lang. Please specify manually";
-                    bulma.input.text [ prop.id "langInput"; prop.placeholder "lang"; prop.style "width: 83%" ];
-                    bulma.button.button [ prop.text "Save"; Ev.onClick (fun _ -> dispatch (SetLang ((document.getElementById("langInput"))?value))) ];
-                ]
-            else
-                Html.none));
         bulma.block [
             prop.text (sprintf "Total watch time: %s" (filtered |> Seq.sumBy (fun x -> x.watchTime) |> formatSeconds) );
         ];
@@ -149,19 +110,6 @@ let StatsTab model dispatch =
 let SettingsTab model dispatch = 
     Html.div [
         prop.style "width: 100%";
-            bulma.block [ 
-                bulma.input.text [ prop.id "apiInput"; prop.style "width: 83%; margin-right: 5px;"; prop.placeholder "API Key"; prop.value model.apikey ];
-                bulma.button.button [
-                    prop.className "is-primary";
-                    prop.text "Save";
-                    prop.typeButton;
-                    Ev.onMouseUp (fun _ -> 
-                        let v = (document.getElementById "apiInput")?value
-                        sendMessage (SetApiKey v)
-                        dispatch (SetApi v)
-                    )
-                ]
-            ];
             bulma.block [ bulma.button.button [
                 prop.className "is-primary control";
                 prop.text "Import from CSV";
@@ -205,8 +153,8 @@ let SettingsTab model dispatch =
             ]]
 
     ]
-let view items api lang =
-    let model, dispatch = Store.makeElmish (init items api lang) update ignore ()
+let view items =
+    let model, dispatch = Store.makeElmish (init items ) update ignore ()
     let tab = tab model dispatch 
     let mmodel = model
     let view = 
@@ -229,18 +177,13 @@ let view items api lang =
     view
 
 promise { 
-    let a = GetApiKey
-    let b = emitJsExpr a "structuredClone($0)"
     let! items = sendMessage GetEntries 
-    let! apikey = sendMessage GetApiKey
-    let! lang = sendMessage GetCurrentLang
-    match (items, apikey, lang) with
-    | (Entries items, ApiKey apikey, l) -> 
+    match items with
+    | Entries items -> 
         if isChrome then // FUCK CHROME
             items |> Seq.iter (fun x -> emitJsStatement x "$0.timestamp = new Date($0.timestamp)")
         else 
             ()
-        let lang = match l with | Lang l -> l | _ -> ""
-        view items apikey lang |> Program.mount
+        view items |> Program.mount
 }
 
