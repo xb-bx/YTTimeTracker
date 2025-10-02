@@ -63,12 +63,12 @@ let waitforUrlChanged old =
     }
 let getCurrentVideoInfo prevtitle =
     promise {
-        let! title = waitForSelector ("#title.ytd-watch-metadata")
+        let! title = waitForSelector ("#title.ytd-watch-metadata yt-formatted-string")
         let mutable title = title?innerText
         console.log $"Title = {title}"
         while title = prevtitle || String.IsNullOrWhiteSpace(title) do
             do! Promise.sleep 20
-            title <- document.querySelector("#title.ytd-watch-metadata")?innerText
+            title <- document.querySelector("#title.ytd-watch-metadata yt-formatted-string")?innerText
             console.log $"Title = {title}"
         let links = document.querySelectorAll "ytd-app #channel-name a"
         let links: HTMLElement array = Fable.Core.JS.Array.from links 
