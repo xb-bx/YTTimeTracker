@@ -146,6 +146,7 @@ db.onsuccess <- (fun ev ->
             }
         | Watched winfo ->
             promise { 
+                console.log winfo
                 if isChrome then emitJsStatement winfo "$0.timestamp = new Date($0.timestamp)"
                 console.log "saving"
                 let! o = objAdd "watches" winfo 

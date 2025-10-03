@@ -7,27 +7,39 @@ open Browser.Types
 open System
 open JsInterop
 open Sutil
+open System.Threading
 type Channel = { id: string; }
 type Video = { description: string; title: string; channel: Channel; id: string }
 
-let waitForSelectorAllWithPred selector pred: JS.Promise<Browser.Types.Element list> = 
+let sleep (token: CancellationToken) ms = 
+    Promise.create (fun resolve reject -> 
+        let id = JS.setTimeout (fun _ -> 
+                resolve ()) ms
+        token.Register(fun _ -> 
+            JS.clearTimeout id
+            reject (new OperationCanceledException()))
+        ()
+    )
+    
+
+let waitForSelectorAllWithPred token selector pred: JS.Promise<Browser.Types.Element list> = 
     promise {
         let mutable p = []
         while p.Length = 0 do 
             p <- List.filter pred (List.ofArray (Fable.Core.JS.Array.from (document.querySelectorAll selector)))
             if p.Length = 0 then
-                let! _ = Promise.sleep 100
+                let! _ = sleep token 100
                 ()
             else ()
         return p
     }
-let waitForSelector selector: JS.Promise<Browser.Types.Element> = 
+let waitForSelector token selector: JS.Promise<Browser.Types.Element> = 
     promise {
         let mutable p = null
         while p = null do 
             p <- document.querySelector selector
             if p = null then
-                let! _ = Promise.sleep 100
+                let! _ = sleep token 100
                 ()
             else ()
         return p
@@ -72,16 +84,17 @@ let waitforUrlChanged old =
             do! Promise.sleep 100
         return UrlChanged
     }
-let getCurrentVideoInfo prevtitle =
+let getCurrentVideoInfo token prevtitle =
     promise {
-        let! title = waitForSelector ("#title.ytd-watch-metadata yt-formatted-string")
+        let! title = waitForSelectorAllWithPred token ("#title.ytd-watch-metadata yt-formatted-string") (fun x -> x?offsetParent <> null)
+        let title = title[0]
         let mutable title = title?innerText
         console.log $"Title = {title}"
         while title = prevtitle || String.IsNullOrWhiteSpace(title) do
             do! Promise.sleep 20
             title <- document.querySelector("#title.ytd-watch-metadata yt-formatted-string")?innerText
             console.log $"Title = {title}"
-        let! links = waitForSelectorAllWithPred "ytd-app #channel-name a" (fun x -> x?offsetParent <> null)
+        let! links = waitForSelectorAllWithPred token "ytd-app #channel-name a" (fun x -> x?offsetParent <> null)
         let link = links[0]
 
         
@@ -92,7 +105,7 @@ let getCurrentVideoInfo prevtitle =
         let search = "\"channelUrl\":\"https://www.youtube.com/channel/"
         let rest = text.Substring( (text.IndexOf(search) + search.Length))
         let id = rest.Substring(0, rest.IndexOf "\"")
-        let! elem = waitForSelector ("#description-inline-expander #expanded")
+        let! elem = waitForSelector token ("#description-inline-expander #expanded")
         elem?click()
         let! _ = Promise.sleep 50
         let desc = elem?innerText
@@ -101,7 +114,7 @@ let getCurrentVideoInfo prevtitle =
         let res = { id = vid; title = title; description = desc; channel = { id = id } }
         return res
     }
-let getVideoInfo (prev, (loc: Location)) = 
+let getVideoInfo (token, prev, (loc: Location)) = 
     let res = 
         match loc.pathname with
         | "/watch" -> 
@@ -109,21 +122,20 @@ let getVideoInfo (prev, (loc: Location)) =
             match params.get "v" with
             | Some id -> 
                 console.log $"getting video {id}"
-                getCurrentVideoInfo prev
+                getCurrentVideoInfo token prev
                 |> Promise.result 
                 |> Promise.bindResult (fun v -> 
                     promise {
                         let! elem = waitForPlayer()
                         let elem = elem.querySelector "video"
-                        
                         return v, elem :?> HTMLElement
                     })
                 |> Promise.map Result.toOption
             | _ -> None |> Promise.lift
         | _ -> None |> Promise.lift
     res |> Promise.map UpdateVideoInfo
-let updateVideoInfoCmd prev loc = 
-    Cmd.OfPromise.either getVideoInfo (prev, loc) id (fun _ -> UrlChanged)
+let updateVideoInfoCmd token prev loc = 
+    Cmd.OfPromise.either getVideoInfo (token, prev, loc) id (fun _ -> UrlChanged)
 let cmdOfPromise promise arg =
     Cmd.OfPromise.either promise arg id (fun _ -> failwith "shouldnt")
 let waitForUnload () = 
@@ -133,6 +145,7 @@ let waitForUnload () =
 let saveOnUnloadCmd() = 
     let p = waitForUnload() |> Promise.map(fun _ -> UrlChanged)
     cmdOfPromise (fun _ -> p) ()
+let mutable cts = new CancellationTokenSource()
 
 let update msg model =
 
@@ -161,9 +174,13 @@ let update msg model =
     | OverwriteLang lang -> { model with lang = lang }, Cmd.none
     | TimerTick ->
         let (newTime, newPlay) = getNewWatchAndNewPlay model
+        (* console.log $"{newTime}, {newPlay}" *)
         {model with watchTime = newTime; playStarted = newPlay }, cmdOfPromise timeout (fun _ -> TimerTick)
     | UrlChanged ->
+        cts.Cancel()
+        cts <- new CancellationTokenSource()
         let (newTime, newPlay) = getNewWatchAndNewPlay model
+        console.log $"{newTime}, {newPlay}"
         console.log "maybe saving"
         match model.videoInformation with
         | Some(v) ->
@@ -175,13 +192,13 @@ let update msg model =
             console.log "no saving"
             ()
         { model with location = window.location }, Cmd.batch [
-            updateVideoInfoCmd (model.videoInformation |> Option.bind (fun x -> x.title |> Some) |> Option.defaultValue "") model.location;
+            updateVideoInfoCmd cts.Token (model.videoInformation |> Option.bind (fun x -> x.title |> Some) |> Option.defaultValue "") model.location;
             saveOnUnloadCmd ()
         ]
     | _ -> model, Cmd.none 
 let mainElement = document.createElement "div"
 promise {
-    let! p = waitForSelector "#container > #end"
+    let! p = waitForSelector cts.Token "#container > #end"
     let view () = 
         let model, dispatch = Sutil.Store.makeElmish (fun _ -> { watchStarted = DateTime.Now; lang = ""; playStarted = None; watchTime = 0; videoInformation = None; location = window.location; videoElem = None }, Cmd.ofMsg UrlChanged) update ignore ()
         Bind.el (model |> Store.mapDistinct (fun x -> (x.videoInformation, x.lang)), (fun (vid, lang) -> 
@@ -190,7 +207,7 @@ promise {
             | Some(video) -> 
                 Html.div [ 
                     Html.div [ 
-                        prop.text $"Detected language {lang}"; prop.style "color: white;" 
+                        prop.text $"Detected language {lang} Title = {video.title}"; prop.style "color: white;" 
                     ]; 
                     Html.input [ prop.placeholder "overwrite lang"; prop.id "ytt_overwrite_lang"];
                     Html.button [ prop.text "save"; Ev.onClick (fun _ -> dispatch (OverwriteLang (document.getElementById "ytt_overwrite_lang")?value)) ]
@@ -203,6 +220,4 @@ promise {
 
 
 }
-// ytd-watch-next-secondary-results-renderer #items ytd-item-section-renderer #header
-(* startNew() *)
 
