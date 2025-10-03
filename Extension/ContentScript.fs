@@ -148,14 +148,13 @@ let saveOnUnloadCmd() =
 let mutable cts = new CancellationTokenSource()
 
 let update msg model =
-
-    let getNewWatchAndNewPlay model =
+    let playing model = 
+        model.videoElem
+        |> Option.map (isVideoPlaying)
+        |> Option.defaultValue false 
+    let getNewWatchAndNewPlay model isplaying =
         let (newTime, newPlay) = 
-            let playing = 
-                model.videoElem
-                |> Option.bind (isVideoPlaying >> Some)
-                |> Option.defaultValue false 
-            match (playing, model.playStarted) with
+            match (isplaying, model.playStarted) with
             | (true, Some (t)) -> model.watchTime, model.playStarted
             | (true, None) -> model.watchTime, (Some DateTime.Now)
             | (false, Some(t)) -> 
@@ -173,13 +172,13 @@ let update msg model =
         { model with videoInformation = None ; playStarted = None; videoElem = None; lang = ""; watchStarted = DateTime.Now }, cmdOfPromise waitforUrlChanged model.location.href 
     | OverwriteLang lang -> { model with lang = lang }, Cmd.none
     | TimerTick ->
-        let (newTime, newPlay) = getNewWatchAndNewPlay model
+        let (newTime, newPlay) = getNewWatchAndNewPlay model (playing model)
         (* console.log $"{newTime}, {newPlay}" *)
         {model with watchTime = newTime; playStarted = newPlay }, cmdOfPromise timeout (fun _ -> TimerTick)
     | UrlChanged ->
         cts.Cancel()
         cts <- new CancellationTokenSource()
-        let (newTime, newPlay) = getNewWatchAndNewPlay model
+        let (newTime, newPlay) = getNewWatchAndNewPlay model (false)
         console.log $"{newTime}, {newPlay}"
         console.log "maybe saving"
         match model.videoInformation with
