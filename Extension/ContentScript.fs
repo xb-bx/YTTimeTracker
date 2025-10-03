@@ -10,6 +10,17 @@ open Sutil
 type Channel = { id: string; }
 type Video = { description: string; title: string; channel: Channel; id: string }
 
+let waitForSelectorAllWithPred selector pred: JS.Promise<Browser.Types.Element list> = 
+    promise {
+        let mutable p = []
+        while p.Length = 0 do 
+            p <- List.filter pred (List.ofArray (Fable.Core.JS.Array.from (document.querySelectorAll selector)))
+            if p.Length = 0 then
+                let! _ = Promise.sleep 100
+                ()
+            else ()
+        return p
+    }
 let waitForSelector selector: JS.Promise<Browser.Types.Element> = 
     promise {
         let mutable p = null
@@ -70,9 +81,8 @@ let getCurrentVideoInfo prevtitle =
             do! Promise.sleep 20
             title <- document.querySelector("#title.ytd-watch-metadata yt-formatted-string")?innerText
             console.log $"Title = {title}"
-        let links = document.querySelectorAll "ytd-app #channel-name a"
-        let links: HTMLElement array = Fable.Core.JS.Array.from links 
-        let link = links |> Seq.find(fun x -> x.offsetParent <> null)
+        let! links = waitForSelectorAllWithPred "ytd-app #channel-name a" (fun x -> x?offsetParent <> null)
+        let link = links[0]
 
         
         let href = link.getAttribute "href" 
