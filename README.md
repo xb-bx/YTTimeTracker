@@ -5,7 +5,7 @@ Also detects the language of the video
 
 ## Install
 - [Firefox](https://addons.mozilla.org/en-US/firefox/addon/yt-watch-statistics-tracker/)
-- Chrome version is waiting to be approved
+- [Chrome](https://chromewebstore.google.com/detail/youtube-watch-statistics/hfobacmhofkmobnjdidgdhifhmojdmge)
 
 
 
