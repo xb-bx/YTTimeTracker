@@ -13,6 +13,8 @@ open Bulma
 type Tab =
     | Today
     | ThisWeek
+    | ThisMonth
+    | ThisYear
     | AllTime
     | Settings
 let formatSeconds (secs: float) = 
@@ -85,24 +87,41 @@ let tab model dispatch (name: string) target =
 let startofweek (d: DateTime) =
     let diff = (7 + (int(d.DayOfWeek) - int(DayOfWeek.Monday))) % 7
     d.AddDays(float(-1 * diff)).Date
+let startofmonth (d: DateTime) =
+    let d = d.Date
+    new DateTime(d.Year, d.Month, 1)
+let startofyear (d: DateTime) =
+    let d = d.Date
+    new DateTime(d.Year, 1, 1)
+let averageOrZero s =
+    if (Seq.isEmpty s) then 0.0
+    else s |> Seq.average
+    
 let StatsTab model dispatch = 
+    let average data =
+        data |> Seq.groupBy (fun x -> x.timestamp.Date) |> Seq.map (fun (d, items) -> items |> Seq.sumBy (fun x -> x.watchTime)) |> averageOrZero
     let items = (model |> Store.get).items
     let filtered = 
         match (model |> Store.get).activeTab with
         | Today -> items |> Seq.filter (fun x -> DateOnly.FromDateTime(x.timestamp) = DateOnly.FromDateTime(DateTime.Today)) 
-        | ThisWeek -> items |> Seq.filter (fun x -> DateOnly.FromDateTime(x.timestamp) > DateOnly.FromDateTime(DateTime.Now |> startofweek)) 
+        | ThisWeek -> items |> Seq.filter (fun x -> DateOnly.FromDateTime(x.timestamp) >= DateOnly.FromDateTime(DateTime.Now |> startofweek)) 
+        | ThisMonth -> items |> Seq.filter (fun x -> DateOnly.FromDateTime(x.timestamp) >= DateOnly.FromDateTime(DateTime.Now |> startofmonth)) 
+        | ThisYear -> items |> Seq.filter (fun x -> DateOnly.FromDateTime(x.timestamp) >= DateOnly.FromDateTime(DateTime.Now |> startofyear)) 
         | AllTime -> items 
     Html.div [ 
         prop.style "width: 100%";
         bulma.block [
             prop.text (sprintf "Total watch time: %s" (filtered |> Seq.sumBy (fun x -> x.watchTime) |> formatSeconds) );
         ];
+        bulma.block [
+            prop.text (sprintf "Per day: %s" (filtered |> average |> formatSeconds) );
+        ];
         bulma.block  
             (filtered 
                 |> Seq.groupBy (fun x -> x.audioLang) 
-                |> Seq.map (fun (audio, ws) -> (audio,ws |> Seq.sumBy(fun w -> w.watchTime))) 
-                |> Seq.map (fun (name, time) -> 
-                    Html.p [ prop.text (sprintf "%s: %s" ( if name |> String.IsNullOrWhiteSpace then "unknown" else name)  (formatSeconds time) )]) 
+                |> Seq.map (fun (audio, ws) -> (audio,ws |> Seq.sumBy(fun w -> w.watchTime), ws |> average)) 
+                |> Seq.map (fun (name, time, avgTime) -> 
+                    Html.p [ prop.text (sprintf "%s: %s/per day %s" ( if name |> String.IsNullOrWhiteSpace then "unknown" else name)  (formatSeconds time) (formatSeconds avgTime) )]) 
                 |> List.ofSeq)
         
     ]
@@ -162,6 +181,8 @@ let view items =
             bulma.panelTabs [ 
                 tab "Today" Today;
                 tab "This week" ThisWeek;
+                tab "This month" ThisMonth;
+                tab "This year" ThisYear;
                 tab "All time" AllTime;
                 tab "Settings" Settings;
             ];
